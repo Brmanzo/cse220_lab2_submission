@@ -93,7 +93,7 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
   dc->sd.ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
 
 
- init_hash_table(&dc->Guest_book, "Dcache_Guest", 1000000, sizeof(Flag)); //BRADLEY
+ init_hash_table(&dc->Guest_book, "Dcache_Guest", 10000000, sizeof(Flag)); //BRADLEY
 
   //TODO
   init_cache(&dc->Reference_cache, "REF", DCACHE_SIZE, DCACHE_SIZE/DCACHE_LINE_SIZE, DCACHE_LINE_SIZE,
@@ -299,11 +299,32 @@ void update_dcache_stage(Stage_Data* src_sd) {
     /* now access the dcache with it */
 
     // Logic to maintain the reference cache
-    check = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va, //BRADLEY CONF
+    check = (Dcache_Data*)cache_access(&dc->Reference_cache, op->oracle_info.va, //BRADLEY CONF
                                       &check_addr, TRUE);
 
     line = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va,
                                       &line_addr, TRUE);
+    if(!line)
+    {
+      // If new to the party, write their name in da book
+      hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
+      // If they just pulled up to da party, its always a compulsory miss
+      if(Flag_check)
+      {
+        STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
+      }
+      // Fully Associative Reference cache guarantees that the only misses are capacity misses
+      // Simulates an equally sized cache, if we can still find it in the party, it was removed due to a conflict
+      else if(check)
+      {
+        STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
+      }
+      // if it were to naturally evict the desired entry due to capacity, we can rule out the 
+      else
+      {
+        STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
+      }
+    }
 
     write_address = op->oracle_info.va;
     
@@ -455,19 +476,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
           // If on path (Application in Progress)
           if(!op->off_path) 
           {
-            hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
-            if(!Flag_check) //BRADLEY
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
-            }
-            else if(check)
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
-            }
-            else
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
-            }
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
@@ -526,19 +534,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
               STAT_EVENT_ALL(ONE_MORE_DISCARDED_L0CACHE);
           }
           if(!op->off_path) {
-             hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
-            if(!Flag_check) //BRADLEY
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
-            }
-            else if(check)
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
-            }
-            else
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
-            }
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
@@ -597,20 +592,6 @@ void update_dcache_stage(Stage_Data* src_sd) {
           }
 
           if(!op->off_path) {
-
-            hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
-            if(!Flag_check) //BRADLEY
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
-            }
-            else if(check)
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
-            }
-            else
-            {
-              STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
-            }
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ST_ONPATH);
