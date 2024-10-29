@@ -105,6 +105,7 @@ void init_cache(Cache* cache, const char* name, uns cache_size, uns assoc,
   }
 
   /* set the basic parameters */
+  cache->current_size = 0;  //BRADLEY
   strncpy(cache->name, name, MAX_STR_LENGTH);
   cache->data_size   = data_size;
   cache->num_lines   = num_lines;

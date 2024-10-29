@@ -62,6 +62,9 @@
 /* Global Variables */
 
 Dcache_Stage* dc = NULL;
+Dcache_Data* check; //BRADLEY CONF
+Addr check_addr; // BRADLEY CONF
+Addr repl_check_addr; //BRADLEY CONF
 
 /**************************************************************************************/
 /* set_dcache_stage: */
@@ -88,6 +91,13 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
 
   dc->sd.max_op_count = STAGE_MAX_OP_COUNT;
   dc->sd.ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
+
+
+ init_hash_table(&dc->Guest_book, "Dcache_Guest", 1000000, sizeof(Flag)); //BRADLEY
+
+  //TODO
+  init_cache(&dc->Reference_cache, "REF", DCACHE_SIZE, DCACHE_SIZE/DCACHE_LINE_SIZE, DCACHE_LINE_SIZE,
+             sizeof(Dcache_Data), DCACHE_REPL);
 
   /* initialize the cache structure */
   init_cache(&dc->dcache, "DCACHE", DCACHE_SIZE, DCACHE_ASSOC, DCACHE_LINE_SIZE,
@@ -161,6 +171,8 @@ void update_dcache_stage(Stage_Data* src_sd) {
   int          start_op_count;
   Addr         line_addr;
   uns          ii, jj;
+
+  Addr write_address;
 
   // {{{ phase 1 - move ops into the dcache stage
   ASSERT(dc->proc_id, src_sd->max_op_count == dc->sd.max_op_count);
@@ -238,6 +250,8 @@ void update_dcache_stage(Stage_Data* src_sd) {
     uns  bank;
     Flag wrongpath_dcmiss = FALSE;
 
+    Flag Flag_check;
+
     oldest_index  = 0;
     oldest_op_num = MAX_CTR;
     for(jj = 0; jj < dc->sd.max_op_count; jj++)
@@ -284,8 +298,15 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
     /* now access the dcache with it */
 
+    // Logic to maintain the reference cache
+    check = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va, //BRADLEY CONF
+                                      &check_addr, TRUE);
+
     line = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va,
                                       &line_addr, TRUE);
+
+    write_address = op->oracle_info.va;
+    
     op->dcache_cycle = cycle_count;
     dc->idle_cycle   = MAX2(dc->idle_cycle, cycle_count + DCACHE_CYCLES);
 
@@ -314,8 +335,9 @@ void update_dcache_stage(Stage_Data* src_sd) {
         op->wake_cycle = op->done_cycle;
         wake_up_ops(op, REG_DATA_DEP, model->wake_hook);
       }
-    } else if(line) {  // data cache hit
-
+    }
+    else if(line)
+    {  // data cache hit
       if(PREF_FRAMEWORK_ON &&  // if framework is on use new prefetcher.
                                // otherwise old one
          (PREF_UPDATE_ON_WRONGPATH || !op->off_path)) {
@@ -366,7 +388,9 @@ void update_dcache_stage(Stage_Data* src_sd) {
         op->wake_cycle = op->done_cycle;
         wake_up_ops(op, REG_DATA_DEP, model->wake_hook);
       }
-    } else {  // data cache miss
+    }
+    else
+    {  // data cache miss
       if(op->table_info->mem_type == MEM_ST)
         STAT_EVENT(op->proc_id, POWER_DCACHE_WRITE_MISS);
       else
@@ -374,8 +398,9 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
       if(CACHE_STAT_ENABLE)
         dc_miss_stat(op);
-
+      /* If Operation is the Load Memory type of Mem Instruction */
       if(op->table_info->mem_type == MEM_LD) {  // load request
+        
         if(((model->mem == MODEL_MEM) &&
             scan_stores(
               op->oracle_info.va,
@@ -390,11 +415,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
           op->wake_cycle = cycle_count + DCACHE_CYCLES +
                            op->inst_info->extra_ld_latency;
           wake_up_ops(op, REG_DATA_DEP, model->wake_hook);
-        } else if(((model->mem == MODEL_MEM) &&
+        }
+        else if(((model->mem == MODEL_MEM) &&
                    new_mem_req(
                      MRT_DFETCH, dc->proc_id, line_addr, DCACHE_LINE_SIZE,
                      DCACHE_CYCLES - 1 + op->inst_info->extra_ld_latency, op,
-                     dcache_fill_line, op->unique_num, 0))) {
+                     dcache_fill_line, op->unique_num, 0))) 
+        {
           if(PREF_UPDATE_ON_WRONGPATH || !op->off_path) {
             pref_dl0_miss(line_addr, op->inst_info->addr);
           }
@@ -412,6 +439,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
 
             extra_line = (Dcache_Data*)cache_access(&dc->dcache, one_more_addr,
                                                     &extra_line_addr, FALSE);
+            
             ASSERT(dc->proc_id, one_more_addr == extra_line_addr);
             if(!extra_line) {
               if(new_mem_req(
@@ -424,14 +452,30 @@ void update_dcache_stage(Stage_Data* src_sd) {
             } else
               STAT_EVENT_ALL(ONE_MORE_DISCARDED_L0CACHE);
           }
-
-          if(!op->off_path) {
+          // If on path (Application in Progress)
+          if(!op->off_path) 
+          {
+            hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
+            if(!Flag_check) //BRADLEY
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
+            }
+            else if(check)
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
+            }
+            else
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
+            }
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
             op->oracle_info.dcmiss = TRUE;
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD);
-          } else {
+          } 
+          else 
+          {
             wrongpath_dcmiss = TRUE;
             STAT_EVENT(op->proc_id, DCACHE_MISS_OFFPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_OFFPATH);
@@ -453,8 +497,10 @@ void update_dcache_stage(Stage_Data* src_sd) {
         if(((model->mem == MODEL_MEM) &&
             new_mem_req(MRT_DPRF, dc->proc_id, line_addr, DCACHE_LINE_SIZE,
                         DCACHE_CYCLES - 1 + op->inst_info->extra_ld_latency, op,
-                        dcache_fill_line, op->unique_num, 0))) {
-          if(ONE_MORE_CACHE_LINE_ENABLE) {
+                        dcache_fill_line, op->unique_num, 0)))
+        {
+          if(ONE_MORE_CACHE_LINE_ENABLE)
+          {
             Addr         one_more_addr;
             Addr         extra_line_addr;
             Dcache_Data* extra_line;
@@ -479,8 +525,20 @@ void update_dcache_stage(Stage_Data* src_sd) {
             } else
               STAT_EVENT_ALL(ONE_MORE_DISCARDED_L0CACHE);
           }
-
           if(!op->off_path) {
+             hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
+            if(!Flag_check) //BRADLEY
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
+            }
+            else if(check)
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
+            }
+            else
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
+            }
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
@@ -539,6 +597,20 @@ void update_dcache_stage(Stage_Data* src_sd) {
           }
 
           if(!op->off_path) {
+
+            hash_table_access_create(&dc->Guest_book, write_address, &Flag_check);
+            if(!Flag_check) //BRADLEY
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
+            }
+            else if(check)
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
+            }
+            else
+            {
+              STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
+            }
             STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ST_ONPATH);
@@ -622,9 +694,16 @@ Flag dcache_fill_line(Mem_Req* req) {
           req->off_path, hexstr64s(req->addr), (int)req->addr,
           (int)(req->addr >> LOG2(DCACHE_LINE_SIZE)), req->op_count,
           (req->op_count ? req->oldest_op_unique_num : -1));
+    
 
     data = (Dcache_Data*)cache_insert(&dc->pref_dcache, dc->proc_id, req->addr,
                                       &line_addr, &repl_line_addr);
+
+    if(check == NULL)
+    {
+      data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr, //BRADLEY CONF
+                                      &check_addr, &repl_check_addr);
+    }
     ASSERT(dc->proc_id, req->emitted_cycle);
     ASSERT(dc->proc_id, cycle_count >= req->emitted_cycle);
     // mark the data as HW_prefetch if prefetch mark it as
@@ -674,9 +753,14 @@ Flag dcache_fill_line(Mem_Req* req) {
       STAT_EVENT(dc->proc_id, DCACHE_WB_REQ_DIRTY);
       STAT_EVENT(dc->proc_id, DCACHE_WB_REQ);
     }
-
     data = (Dcache_Data*)cache_insert(&dc->dcache, dc->proc_id, req->addr,
                                       &line_addr, &repl_line_addr);
+                                      
+    if(check == NULL)
+    {
+      data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr, //BRADLEY CONF
+                                      &line_addr, &repl_line_addr);
+    }
     DEBUG(dc->proc_id,
           "Filling dcache  off_path:%d addr:0x%s  :%7d index:%7d op_count:%d "
           "oldest:%lld\n",

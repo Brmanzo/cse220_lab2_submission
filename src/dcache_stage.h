@@ -51,6 +51,8 @@ typedef struct Dcache_Stage_struct {
 
   Counter idle_cycle;  /* Cycle the cache will be idle */
   Flag    mem_blocked; /* Are memory request buffers (aka MSHRs) full? */
+  Hash_Table Guest_book;
+  Cache Reference_cache;
 
   char rand_wb_state[31]; /* state of random number generator for random
                              writebacks */

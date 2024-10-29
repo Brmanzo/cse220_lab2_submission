@@ -143,7 +143,7 @@ DEF_PARAM(  uop_queue_length               , UOP_QUEUE_LENGTH                , u
 /* L0 data */
 DEF_PARAM(dcache_size, DCACHE_SIZE, uns, uns, (64 * 1024), )
 DEF_PARAM(dcache_assoc, DCACHE_ASSOC, uns, uns, 1, )
-DEF_PARAM(dcache_line_size, DCACHE_LINE_SIZE, uns, uns, 64, )
+DEF_PARAM(dcache_line_size, DCACHE_LINE_SIZE, uns, uns, 64, ) //cache size / line size = associativity the reference cache object
 DEF_PARAM(dcache_cycles, DCACHE_CYCLES, uns, uns, 2, )
 DEF_PARAM(perfect_dcache, PERFECT_DCACHE, Flag, Flag, FALSE, )
 DEF_PARAM(dcache_read_ports, DCACHE_READ_PORTS, uns, uns, 8, )
