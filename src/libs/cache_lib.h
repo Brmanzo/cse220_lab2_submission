@@ -107,7 +107,6 @@ typedef struct Cache_struct {
                                   */
   uns data_size; /* how big are the data items in each cache entry? (for malloc)
                   */
-  //uns current_size; //BRADLEY
 
   uns         assoc;       /* associativity */
   uns         num_lines;   /* number of lines in the cache */

@@ -51,6 +51,7 @@ typedef struct Dcache_Stage_struct {
 
   Counter idle_cycle;  /* Cycle the cache will be idle */
   Flag    mem_blocked; /* Are memory request buffers (aka MSHRs) full? */
+  // Added additional data structures to check for Compulsory and Conflict respectively BRADLEY
   Hash_Table Guest_book;
   Cache Reference_cache;
 

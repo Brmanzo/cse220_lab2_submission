@@ -62,9 +62,10 @@
 /* Global Variables */
 
 Dcache_Stage* dc = NULL;
-Dcache_Data* check; //BRADLEY CONF
-Addr check_addr; // BRADLEY CONF
-Addr repl_check_addr; //BRADLEY CONF
+// Adding Global Variables to record hash table and reference cache state BRADLEY
+Dcache_Data* check;
+Addr check_addr;
+Addr repl_check_addr;
 
 /**************************************************************************************/
 /* set_dcache_stage: */
@@ -92,8 +93,8 @@ void init_dcache_stage(uns8 proc_id, const char* name) {
   dc->sd.max_op_count = STAGE_MAX_OP_COUNT;
   dc->sd.ops          = (Op**)malloc(sizeof(Op*) * STAGE_MAX_OP_COUNT);
 
-
-  init_hash_table(&dc->Guest_book, "Dcache_Guest", 10000000, sizeof(Flag)); //BRADLEY
+  // Initialize Hash Table at respectable size storing a bool (flag) to log each new address BRADLEY
+  init_hash_table(&dc->Guest_book, "Dcache_Guest", 10000000, sizeof(Flag));
 
   //TODO
   init_cache(&dc->Reference_cache, "REF", DCACHE_SIZE, DCACHE_SIZE/DCACHE_LINE_SIZE, DCACHE_LINE_SIZE,
@@ -297,15 +298,12 @@ void update_dcache_stage(Stage_Data* src_sd) {
       ideal_l2l1_prefetcher(op);
 
     /* now access the dcache with it */
-    // Are we supposed to
     line = (Dcache_Data*)cache_access(&dc->dcache, op->oracle_info.va,
                                       &line_addr, TRUE); //Use Line Address DISCUSSION
 
-    // Logic to maintain the reference cache
-    check = (Dcache_Data*)cache_access(&dc->Reference_cache, op->oracle_info.va, //BRADLEY CONF
+    // Logic to maintain the reference cache in parallel with line access BRADLEY
+    check = (Dcache_Data*)cache_access(&dc->Reference_cache, op->oracle_info.va, 
                                       &check_addr, TRUE);
-
-    //write_address = op->oracle_info.va; //REMOVE
     
     op->dcache_cycle = cycle_count;
     dc->idle_cycle   = MAX2(dc->idle_cycle, cycle_count + DCACHE_CYCLES);
@@ -457,9 +455,9 @@ void update_dcache_stage(Stage_Data* src_sd) {
           {
             if(!line)
             {
-              // If new to the party, write their name in da book
+              // If new to the party, write their name in the guest book
               hash_table_access_create(&dc->Guest_book, line_addr, &Flag_check);
-              // If they just pulled up to da party, its always a compulsory miss
+              // If they just pulled up to the party, its always a compulsory miss
               if(Flag_check)
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_COMP); //BRADLEY
@@ -470,13 +468,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
               }
-              // if it were to naturally evict the desired entry due to capacity, we can rule out the 
+              // if it were to naturally evict the desired entry due to capacity, we can determine it was a capacity miss
               else
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
               }
             }
-            STAT_EVENT(op->proc_id, DCACHE_MISS); //BRADLEY IMPORTANT
+            STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
             op->oracle_info.dcmiss = TRUE;
@@ -536,7 +534,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
           if(!op->off_path) {
             if(!line)
             {
-              // If new to the party, write their name in da book
+              // If new to the party, write their name in the guest book
               hash_table_access_create(&dc->Guest_book, line_addr, &Flag_check);
               // If they just pulled up to da party, its always a compulsory miss
               if(Flag_check)
@@ -549,13 +547,13 @@ void update_dcache_stage(Stage_Data* src_sd) {
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
               }
-              // if it were to naturally evict the desired entry due to capacity, we can rule out the 
+              // if it were to naturally evict the desired entry due to capacity, we can determine it was a capacity miss
               else
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
               }
             }
-            STAT_EVENT(op->proc_id, DCACHE_MISS); //BRADLEY IMPORTANT
+            STAT_EVENT(op->proc_id, DCACHE_MISS);
             STAT_EVENT(op->proc_id, DCACHE_MISS_ONPATH);
             STAT_EVENT(op->proc_id, DCACHE_MISS_LD_ONPATH);
             op->oracle_info.dcmiss = TRUE;
@@ -614,7 +612,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
           if(!op->off_path) {
             if(!line)
             {
-              // If new to the party, write their name in da book
+              // If new to the party, write their name in the book
               hash_table_access_create(&dc->Guest_book, line_addr, &Flag_check);
               // If they just pulled up to da party, its always a compulsory miss
               if(Flag_check)
@@ -627,7 +625,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_CONF); //BRADLEY
               }
-              // if it were to naturally evict the desired entry due to capacity, we can rule out the 
+              // if it were to naturally evict the desired entry due to capacity, we can determine it was a capacity miss
               else
               {
                 STAT_EVENT(op->proc_id, DCACHE_MISS_CAP); //BRADLEY
@@ -723,7 +721,8 @@ Flag dcache_fill_line(Mem_Req* req) {
 
     if(check == NULL)
     {
-      data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr, //BRADLEY CONF
+      // Here if the reference cache check was a miss, write the address to the reference cache BRADLEY
+      data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr,
                                       &check_addr, &repl_check_addr);
     }
     ASSERT(dc->proc_id, req->emitted_cycle);
@@ -780,7 +779,8 @@ Flag dcache_fill_line(Mem_Req* req) {
                                       
     if(check == NULL)
     {
-      data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr, //BRADLEY CONF
+      // Here if the reference cache check was a miss, write the address to the reference cache //BRADLEY
+      data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr, 
                                       &line_addr, &repl_line_addr);
     }
     DEBUG(dc->proc_id,
