@@ -64,6 +64,7 @@
 Dcache_Stage* dc = NULL;
 // Adding Global Variables to record hash table and reference cache state BRADLEY
 Dcache_Data* check;
+Dcache_Data* check2;
 Addr check_addr;
 Addr repl_check_addr;
 
@@ -304,7 +305,7 @@ void update_dcache_stage(Stage_Data* src_sd) {
     // Logic to maintain the reference cache in parallel with line access BRADLEY
     check = (Dcache_Data*)cache_access(&dc->Reference_cache, op->oracle_info.va, 
                                       &check_addr, TRUE);
-    
+
     op->dcache_cycle = cycle_count;
     dc->idle_cycle   = MAX2(dc->idle_cycle, cycle_count + DCACHE_CYCLES);
 
@@ -776,10 +777,13 @@ Flag dcache_fill_line(Mem_Req* req) {
     }
     data = (Dcache_Data*)cache_insert(&dc->dcache, dc->proc_id, req->addr,
                                       &line_addr, &repl_line_addr);
-                                      
-    if(check == NULL)
+
+    // Logic to maintain the reference cache in parallel with line access BRADLEY
+    check2 = (Dcache_Data*)cache_access(&dc->Reference_cache, req->addr, 
+                                      &check_addr, FALSE);                      
+    if(check2 == NULL)
     {
-      // Here if the reference cache check was a miss, write the address to the reference cache //BRADLEY
+      // Here if the reference cache check2 was a miss, write the address to the reference cache //BRADLEY
       data = (Dcache_Data*)cache_insert(&dc->Reference_cache, dc->proc_id, req->addr, 
                                       &line_addr, &repl_line_addr);
     }
